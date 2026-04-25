@@ -144,6 +144,14 @@ Open the notebook in Colab after cloning the repo. It loads 20 examples from
 Official MMBench scoring is accuracy-oriented. GPU memory and latency are not
 part of the official MMBench metric, so the Colab cells log them separately.
 
+If you only want to download the first 20 MMBench samples and compare answers
+manually without any VLM endpoint, use:
+
+```text
+notebooks/mmbench_20_manual_colab.ipynb
+notebooks/mmbench_20_manual_colab.py
+```
+
 ## Main VLM Adapter
 
 `src/main_vlm_client.py` supports:

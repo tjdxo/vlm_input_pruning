@@ -20,8 +20,8 @@ extra local measurements for this experiment.
 # - baseline: original image -> Qwen
 # - pruned: original image -> crop-canvas process -> Qwen
 #
-# The default model is `Qwen/Qwen2.5-VL-3B-Instruct` because it is lighter than
-# 7B/72B variants and is more practical for Colab. You can change `MODEL_ID`.
+# The default main VLM is `Qwen/Qwen3-VL-4B-Instruct`.
+# The front-stage sVLM is `HuggingFaceTB/SmolVLM-256M-Instruct`.
 
 # %%
 import os
@@ -64,8 +64,7 @@ print("cwd:", Path.cwd())
 # %%
 import sys
 
-# Qwen2.5-VL support requires a recent Transformers. qwen-vl-utils handles
-# local image inputs for the chat template.
+# Qwen3-VL support requires a recent Transformers.
 # Keep Pillow below 12 in Colab because mixed Pillow files can break PIL imports.
 packages = [
     "-r",
@@ -73,12 +72,12 @@ packages = [
     "pillow<12",
     "datasets",
     "accelerate",
-    "qwen-vl-utils",
     "transformers>=4.57.1",
 ]
 
-USE_4BIT = False
+USE_4BIT = True
 USE_YOLO_DETECTOR = True
+USE_SMALL_VLM = True
 
 if USE_4BIT:
     packages.append("bitsandbytes")
@@ -104,7 +103,8 @@ print("deps ready")
 
 # %%
 # Main settings.
-MODEL_ID = "Qwen/Qwen2.5-VL-3B-Instruct"
+MODEL_ID = "Qwen/Qwen3-VL-4B-Instruct"
+SMALL_VLM_MODEL_ID = "HuggingFaceTB/SmolVLM-256M-Instruct"
 SAMPLE_SIZE = 20
 MMBENCH_DATASET = "HuggingFaceM4/MMBench_dev"
 
@@ -118,6 +118,7 @@ OUT_ROOT = Path("/content/mmbench_20_qwen_compare")
 OUT_ROOT.mkdir(parents=True, exist_ok=True)
 
 print("model:", MODEL_ID)
+print("small_vlm:", SMALL_VLM_MODEL_ID)
 print("samples:", SAMPLE_SIZE)
 
 # %%
@@ -135,11 +136,11 @@ import torch
 from datasets import load_dataset
 from IPython.display import display
 from PIL import Image
-from qwen_vl_utils import process_vision_info
-from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
 from src.config import load_config
 from src.pipeline import run_pipeline
+from src.small_vlm_context import SmallVLMContextExtractor
 
 LETTERS = ["A", "B", "C", "D"]
 IMAGE_DIR = OUT_ROOT / "images"
@@ -333,7 +334,7 @@ processor = AutoProcessor.from_pretrained(
 )
 
 load_kwargs = {
-    "torch_dtype": "auto",
+    "dtype": "auto",
     "device_map": "auto",
 }
 
@@ -345,7 +346,7 @@ if USE_4BIT:
         bnb_4bit_compute_dtype=torch.float16,
     )
 
-model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+model = Qwen3VLForConditionalGeneration.from_pretrained(
     MODEL_ID,
     **load_kwargs,
 )
@@ -370,20 +371,14 @@ def run_qwen(prompt: str, image_path: str | Path) -> str:
         }
     ]
 
-    text = processor.apply_chat_template(
+    inputs = processor.apply_chat_template(
         messages,
-        tokenize=False,
+        tokenize=True,
         add_generation_prompt=True,
-    )
-    image_inputs, video_inputs = process_vision_info(messages)
-    inputs = processor(
-        text=[text],
-        images=image_inputs,
-        videos=video_inputs,
-        padding=True,
+        return_dict=True,
         return_tensors="pt",
     )
-    inputs = inputs.to(device)
+    inputs = inputs.to(model.device)
 
     with torch.inference_mode():
         generated_ids = model.generate(
@@ -419,9 +414,22 @@ dataset = load_dataset(MMBENCH_DATASET, split="train")
 samples = dataset.select(range(SAMPLE_SIZE))
 
 config = load_config("configs/default.yaml")
-config["small_vlm"]["backend"] = "mock"
+config["frontend"]["parallel"] = True
+config["small_vlm"]["backend"] = "smolvlm" if USE_SMALL_VLM else "mock"
+config["small_vlm"]["model_name"] = SMALL_VLM_MODEL_ID
+config["small_vlm"]["device"] = "cuda" if torch.cuda.is_available() else "cpu"
+config["small_vlm"]["longest_edge"] = 512
+config["small_vlm"]["max_new_tokens"] = 96
 config["detector"]["backend"] = "yolo" if USE_YOLO_DETECTOR else "dummy"
 config["outputs"]["save_individual_crops"] = False
+
+if USE_SMALL_VLM:
+    warmup_image = to_rgb_image(samples[0]["image"])
+    _ = SmallVLMContextExtractor(config["small_vlm"]).describe(
+        warmup_image,
+        "Warm up the front-stage scene summarizer.",
+    )
+    print("small VLM warmed up")
 
 records = []
 
@@ -476,6 +484,15 @@ for idx, row in enumerate(samples):
         "baseline_seconds": baseline["seconds"],
         "pruned_preprocess_seconds": preprocess["seconds"],
         "pruned_pipeline_reported_seconds": sum_latency(pruned_result["metrics"]),
+        "front_stage_parallel_seconds": pruned_result["metrics"]
+        .get("latency_seconds", {})
+        .get("frontend_parallel"),
+        "small_vlm_seconds": pruned_result["metrics"]
+        .get("latency_seconds", {})
+        .get("small_vlm_context"),
+        "detector_seconds": pruned_result["metrics"]
+        .get("latency_seconds", {})
+        .get("detector"),
         "pruned_qwen_seconds": pruned["seconds"],
         "pruned_total_seconds": preprocess["seconds"] + pruned["seconds"],
         "baseline_gpu_peak_mb": baseline["gpu_mem_peak_mb"],
@@ -489,6 +506,9 @@ for idx, row in enumerate(samples):
         "token_reduction_ratio_est": token_estimates.get("token_reduction_ratio"),
         "num_detections": pruned_result["metrics"].get("num_detections"),
         "num_selected_crops": pruned_result["metrics"].get("num_selected_crops"),
+        "budget_dropped_crops": pruned_result["metrics"].get("budget_dropped_crops"),
+        "small_vlm_backend": pruned_result["scene_context"].get("backend"),
+        "small_vlm_model": SMALL_VLM_MODEL_ID if USE_SMALL_VLM else "mock",
         "image_path": str(image_path),
         "composed_image_path": composed_path,
         "baseline_text": baseline_text,
@@ -532,7 +552,7 @@ pruned_torch_peak_delta = results_df[
 summary = pd.DataFrame(
     [
         {
-            "variant": "baseline_qwen_original_image",
+            "variant": "baseline_qwen3_vl_original_image",
             "accuracy": mean_or_nan(results_df["baseline_correct"]),
             "avg_seconds": mean_or_nan(results_df["baseline_seconds"]),
             "avg_gpu_peak_mb": mean_or_nan(results_df["baseline_gpu_peak_mb"]),
@@ -542,7 +562,7 @@ summary = pd.DataFrame(
             "avg_token_reduction_ratio_est": 0.0,
         },
         {
-            "variant": "qwen_with_crop_canvas_process",
+            "variant": "smolvlm_yolo_crop_canvas_qwen3_vl",
             "accuracy": mean_or_nan(results_df["pruned_correct"]),
             "avg_seconds": mean_or_nan(results_df["pruned_total_seconds"]),
             "avg_gpu_peak_mb": mean_or_nan(pruned_gpu_peak),
@@ -552,7 +572,7 @@ summary = pd.DataFrame(
             ),
         },
         {
-            "variant": "crop_canvas_preprocess_only",
+            "variant": "smolvlm_yolo_crop_preprocess_only",
             "accuracy": math.nan,
             "avg_seconds": mean_or_nan(results_df["pruned_preprocess_seconds"]),
             "avg_gpu_peak_mb": mean_or_nan(
@@ -578,7 +598,7 @@ print()
 print("Notes:")
 print("- This is head-20 single-pass, not the full official MMBench protocol.")
 print("- Official MMBench scoring is accuracy; time/GPU are extra local logs.")
-print("- GPU memory includes the loaded Qwen model weights.")
+print("- GPU memory includes the loaded Qwen3-VL and SmolVLM model weights.")
 
 # %%
 import shutil

@@ -7,6 +7,6 @@ pandas>=2.0.0
 # Optional runtime backends. The code lazy-imports these, so mock mode works
 # even if they are not installed. Uncomment/install in Colab when needed.
 # ultralytics>=8.2.0
-# transformers>=4.45.0
+# transformers>=4.57.1
 # accelerate>=0.33.0
 # torch>=2.3.0

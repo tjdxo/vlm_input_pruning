@@ -17,6 +17,8 @@ This project uses a hybrid representation:
 
 The current implementation is intentionally lightweight: mock mode runs end-to-end without model downloads, and YOLO / HF captioning are optional lazy-loaded backends.
 
+For the current process overview, see [`docs/PROCESS.md`](docs/PROCESS.md).
+
 ## Crop Pruning Rules
 
 Before composing the crop canvas, selected detector boxes are filtered to avoid
@@ -31,6 +33,16 @@ increasing the final visual input:
 The crop canvas also shrinks to the actual packed crop content instead of always
 using a fixed 1600x1600 image. This keeps small benchmark images from becoming
 larger after preprocessing.
+
+## Front-Stage Models
+
+The front stage can run the scene-context sVLM and detector in parallel:
+
+- sVLM: `HuggingFaceTB/SmolVLM-256M-Instruct`
+- detector: YOLO, default `yolov8n.pt`
+
+The default config keeps `small_vlm.backend: mock` so quick smoke tests do not
+download model weights. Benchmark notebooks enable SmolVLM explicitly.
 
 ## Connection To `inmare/jjs`
 
@@ -175,8 +187,8 @@ notebooks/mmbench_20_qwen_local_colab.ipynb
 notebooks/mmbench_20_qwen_local_colab.py
 ```
 
-This compares `Qwen + original image` against `crop-canvas preprocessing +
-Qwen` on the same 20 examples.
+This compares `Qwen3-VL + original image` against `SmolVLM + YOLO +
+crop-canvas preprocessing + Qwen3-VL` on the same 20 examples.
 
 ## Main VLM Adapter
 

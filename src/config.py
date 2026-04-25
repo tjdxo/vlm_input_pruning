@@ -8,7 +8,16 @@ import yaml
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "small_vlm": {"backend": "mock"},
+    "frontend": {"parallel": True},
+    "small_vlm": {
+        "backend": "mock",
+        "model_name": "HuggingFaceTB/SmolVLM-256M-Instruct",
+        "device": "auto",
+        "torch_dtype": "auto",
+        "attn_implementation": "eager",
+        "longest_edge": 512,
+        "max_new_tokens": 128,
+    },
     "detector": {"backend": "dummy", "confidence_threshold": 0.25, "max_detections": 12},
     "crop_selection": {
         "top_k": 8,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -29,11 +30,28 @@ def run_pipeline(
     with latency.measure("load_image"):
         image = load_image(image_path)
 
-    with latency.measure("small_vlm_context"):
-        scene_context = SmallVLMContextExtractor(config.get("small_vlm", {})).describe(image, question)
-
-    with latency.measure("detector"):
-        detections = ObjectDetector(config.get("detector", {})).detect(image)
+    frontend_config = config.get("frontend", {})
+    if frontend_config.get("parallel", True):
+        with latency.measure("frontend_parallel"):
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                scene_future = executor.submit(
+                    _describe_scene,
+                    image,
+                    question,
+                    config.get("small_vlm", {}),
+                    latency,
+                )
+                detection_future = executor.submit(
+                    _detect_objects,
+                    image,
+                    config.get("detector", {}),
+                    latency,
+                )
+                scene_context = scene_future.result()
+                detections = detection_future.result()
+    else:
+        scene_context = _describe_scene(image, question, config.get("small_vlm", {}), latency)
+        detections = _detect_objects(image, config.get("detector", {}), latency)
 
     crop_selection_config = dict(config.get("crop_selection", {}))
     crop_selection_config.setdefault(
@@ -146,3 +164,13 @@ def _smallest_effective_crop_index(selected: list[dict[str, Any]]) -> int:
         range(len(selected)),
         key=lambda idx: int(selected[idx].get("effective_crop_area", selected[idx].get("area", 0))),
     )
+
+
+def _describe_scene(image, question: str, config: dict[str, Any], latency: LatencyTracker):
+    with latency.measure("small_vlm_context"):
+        return SmallVLMContextExtractor(config).describe(image, question)
+
+
+def _detect_objects(image, config: dict[str, Any], latency: LatencyTracker):
+    with latency.measure("detector"):
+        return ObjectDetector(config).detect(image)

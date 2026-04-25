@@ -1,11 +1,17 @@
 project:
   name: vlm_input_pruning
 
+frontend:
+  parallel: true
+
 small_vlm:
   backend: mock
-  model_name: null
+  model_name: HuggingFaceTB/SmolVLM-256M-Instruct
   device: auto
-  max_new_tokens: 96
+  torch_dtype: auto
+  attn_implementation: eager
+  longest_edge: 512
+  max_new_tokens: 128
 
 detector:
   backend: dummy

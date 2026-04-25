@@ -16,6 +16,15 @@ detector:
 crop_selection:
   top_k: 8
   min_score: 0.05
+  deduplicate_exact_boxes: true
+  remove_contained_boxes: true
+  box_containment_tolerance: 0
+  remove_large_crops: true
+  max_effective_crop_area_ratio: 0.75
+  enforce_total_crop_area_lte_original: true
+  total_crop_area_budget_ratio: 1.0
+  enforce_composed_token_budget: true
+  max_composed_token_ratio: 1.0
   weights:
     detection_score: 0.45
     area: 0.20
@@ -29,6 +38,7 @@ crop_composer:
   tile_padding: 12
   crop_margin: 0.08
   annotate: true
+  shrink_to_content: true
   background_color: [245, 245, 245]
 
 token_estimator:

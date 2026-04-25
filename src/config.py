@@ -13,6 +13,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "crop_selection": {
         "top_k": 8,
         "min_score": 0.05,
+        "deduplicate_exact_boxes": True,
+        "remove_contained_boxes": True,
+        "box_containment_tolerance": 0,
+        "remove_large_crops": True,
+        "max_effective_crop_area_ratio": 0.75,
+        "enforce_total_crop_area_lte_original": True,
+        "total_crop_area_budget_ratio": 1.0,
+        "enforce_composed_token_budget": True,
+        "max_composed_token_ratio": 1.0,
         "weights": {
             "detection_score": 0.45,
             "area": 0.20,
@@ -27,6 +36,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "tile_padding": 12,
         "crop_margin": 0.08,
         "annotate": True,
+        "shrink_to_content": True,
         "background_color": [245, 245, 245],
     },
     "token_estimator": {"backend": "qwen_like", "patch_size": 28},

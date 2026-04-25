@@ -22,24 +22,48 @@ class CropComposer:
         padding = int(self.config.get("tile_padding", 12))
         bg = tuple(self.config.get("background_color", [245, 245, 245]))
         annotate = bool(self.config.get("annotate", True))
+        shrink_to_content = bool(self.config.get("shrink_to_content", True))
+        label_h = 18 if annotate else 0
 
         crops = [self._crop_with_margin(image, det) for det in selected]
         cols = max(1, min(len(crops), math.ceil(math.sqrt(len(crops)))))
         tile_w = max(1, (max_w - padding * (cols + 1)) // cols)
         rows = math.ceil(len(crops) / cols)
         tile_h = max(1, (max_h - padding * (rows + 1)) // rows)
-        canvas = Image.new("RGB", (max_w, max_h), bg)
+
+        items = []
+        row_heights = [1 for _ in range(rows)]
+        col_widths = [1 for _ in range(cols)]
+        for idx, (det, crop, source_box) in enumerate(zip(selected, crops, [c[1] for c in crops])):
+            crop_img = crop[0]
+            row, col = divmod(idx, cols)
+            resized = _fit_inside(crop_img, tile_w, max(1, tile_h - label_h))
+            items.append((idx, det, source_box, resized, row, col))
+            row_heights[row] = max(row_heights[row], label_h + resized.height)
+            col_widths[col] = max(col_widths[col], resized.width)
+
+        if shrink_to_content:
+            canvas_w = max(1, padding * (cols + 1) + sum(col_widths))
+            canvas_h = max(1, padding * (rows + 1) + sum(row_heights))
+        else:
+            canvas_w = max_w
+            canvas_h = max_h
+
+        canvas = Image.new("RGB", (canvas_w, canvas_h), bg)
         draw = ImageDraw.Draw(canvas)
         font = ImageFont.load_default()
         metadata: list[dict[str, Any]] = []
 
-        for idx, (det, crop, source_box) in enumerate(zip(selected, crops, [c[1] for c in crops])):
-            crop_img = crop[0]
-            row, col = divmod(idx, cols)
-            x = padding + col * (tile_w + padding)
-            y = padding + row * (tile_h + padding)
-            label_h = 18 if annotate else 0
-            resized = _fit_inside(crop_img, tile_w, max(1, tile_h - label_h))
+        x_offsets = _offsets(col_widths, padding) if shrink_to_content else None
+        y_offsets = _offsets(row_heights, padding) if shrink_to_content else None
+
+        for idx, det, source_box, resized, row, col in items:
+            if shrink_to_content:
+                x = x_offsets[col] if x_offsets else padding
+                y = y_offsets[row] if y_offsets else padding
+            else:
+                x = padding + col * (tile_w + padding)
+                y = padding + row * (tile_h + padding)
             canvas.paste(resized, (x, y + label_h))
             if annotate:
                 label = f"{idx + 1}. {det['label']} {det['score']:.2f}"
@@ -52,6 +76,7 @@ class CropComposer:
                     "importance_score": det.get("importance_score"),
                     "source_box": source_box,
                     "original_box": det["box"],
+                    "effective_crop_area": det.get("effective_crop_area"),
                     "canvas_box": [x, y + label_h, x + resized.width, y + label_h + resized.height],
                     "display_size": [resized.width, resized.height],
                 }
@@ -71,6 +96,8 @@ class CropComposer:
         max_w = int(self.config.get("max_canvas_width", 1600))
         max_h = int(self.config.get("max_canvas_height", 1600))
         resized = _fit_inside(image, max_w, max_h)
+        if self.config.get("shrink_to_content", True):
+            return resized
         canvas = Image.new("RGB", (max_w, max_h), tuple(self.config.get("background_color", [245, 245, 245])))
         x = (max_w - resized.width) // 2
         y = (max_h - resized.height) // 2
@@ -84,3 +111,12 @@ def _fit_inside(image: Image.Image, max_w: int, max_h: int) -> Image.Image:
     if new_size == image.size:
         return image.copy()
     return image.resize(new_size, Image.Resampling.LANCZOS)
+
+
+def _offsets(sizes: list[int], padding: int) -> list[int]:
+    offsets = []
+    cursor = padding
+    for size in sizes:
+        offsets.append(cursor)
+        cursor += size + padding
+    return offsets

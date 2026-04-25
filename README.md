@@ -17,6 +17,21 @@ This project uses a hybrid representation:
 
 The current implementation is intentionally lightweight: mock mode runs end-to-end without model downloads, and YOLO / HF captioning are optional lazy-loaded backends.
 
+## Crop Pruning Rules
+
+Before composing the crop canvas, selected detector boxes are filtered to avoid
+increasing the final visual input:
+
+- exact duplicate boxes keep only the first detector result
+- boxes covering 75% or more of the original image are dropped before nested-box filtering
+- boxes fully contained inside another remaining box are dropped
+- if selected crop areas still exceed the original image area, the smallest crops are dropped first
+- if the final composed canvas would exceed the original image-token estimate, the smallest crops are dropped until it fits
+
+The crop canvas also shrinks to the actual packed crop content instead of always
+using a fixed 1600x1600 image. This keeps small benchmark images from becoming
+larger after preprocessing.
+
 ## Connection To `inmare/jjs`
 
 The referenced `jjs` repository appears to explore Qwen3-VL, YOLO crop augmentation, Qwen-only versus YOLO+Qwen comparisons, 2-stage VLM structures, SmolVLM experiments, llama.cpp / GGUF, OpenAI-compatible chat completions, and benchmark logging.

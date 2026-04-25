@@ -35,16 +35,33 @@ def run_pipeline(
     with latency.measure("detector"):
         detections = ObjectDetector(config.get("detector", {})).detect(image)
 
+    crop_selection_config = dict(config.get("crop_selection", {}))
+    crop_selection_config.setdefault(
+        "crop_margin_for_area_budget",
+        config.get("crop_composer", {}).get("crop_margin", 0.0),
+    )
+
     with latency.measure("crop_selection"):
-        selected = CropSelector(config.get("crop_selection", {})).select(
+        selected = CropSelector(crop_selection_config).select(
             detections=detections,
             image_size=image.size,
             question=question,
             scene_context=scene_context,
         )
 
+    estimator = ImageTokenEstimator(config.get("token_estimator", {}))
+    composer = CropComposer(config.get("crop_composer", {}))
+    budget_dropped_crops = 0
     with latency.measure("crop_composition"):
-        composed, crop_metadata = CropComposer(config.get("crop_composer", {})).compose(image, selected)
+        composed, crop_metadata = composer.compose(image, selected)
+        if crop_selection_config.get("enforce_composed_token_budget", True):
+            original_tokens = estimator.estimate(image.size)["approx_image_tokens"]
+            max_ratio = float(crop_selection_config.get("max_composed_token_ratio", 1.0))
+            while selected and estimator.estimate(composed.size)["approx_image_tokens"] > original_tokens * max_ratio:
+                drop_idx = _smallest_effective_crop_index(selected)
+                selected.pop(drop_idx)
+                budget_dropped_crops += 1
+                composed, crop_metadata = composer.compose(image, selected)
 
     composed_path = save_image(composed, out / f"{stem}_composed.jpg")
     crop_image_paths: list[str] = []
@@ -59,7 +76,6 @@ def run_pipeline(
         with latency.measure("detections_visualization"):
             detections_path = draw_detections(image, detections, out / f"{stem}_detections.jpg")
 
-    estimator = ImageTokenEstimator(config.get("token_estimator", {}))
     token_estimates = estimator.compare(image.size, composed.size)
 
     final_prompt = build_final_prompt(scene_context, crop_metadata, question)
@@ -80,6 +96,7 @@ def run_pipeline(
         token_estimates=token_estimates,
         latency=latency.timings,
     )
+    metrics["budget_dropped_crops"] = budget_dropped_crops
     metadata = {
         "image_path": str(Path(image_path)),
         "question": question,
@@ -122,3 +139,10 @@ def _save_individual_crops(
 
 def _safe_label(label: str) -> str:
     return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in label)[:48]
+
+
+def _smallest_effective_crop_index(selected: list[dict[str, Any]]) -> int:
+    return min(
+        range(len(selected)),
+        key=lambda idx: int(selected[idx].get("effective_crop_area", selected[idx].get("area", 0))),
+    )

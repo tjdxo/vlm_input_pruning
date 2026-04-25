@@ -125,6 +125,24 @@ The benchmark writes JSONL and CSV rows for:
 
 The MVP records approximate image tokens rather than model-exact tokenization. This is enough for relative comparisons across original image input and composed crop canvas input.
 
+## MMBench 20-Sample Colab Comparison
+
+For a light MMBench smoke comparison between the original VLM input and this
+project's crop-canvas input, use:
+
+```text
+notebooks/mmbench_20_eval_colab.py
+```
+
+Copy the cells into Colab after cloning the repo. The notebook-style script
+loads 20 examples from `HuggingFaceM4/MMBench_dev`, sends each question to:
+
+- baseline: original image + MMBench multiple-choice prompt
+- pruned: composed crop canvas + generated scene/crop prompt
+
+Official MMBench scoring is accuracy-oriented. GPU memory and latency are not
+part of the official MMBench metric, so the Colab cells log them separately.
+
 ## Main VLM Adapter
 
 `src/main_vlm_client.py` supports:

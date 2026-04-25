@@ -47,6 +47,13 @@ def run_pipeline(
         composed, crop_metadata = CropComposer(config.get("crop_composer", {})).compose(image, selected)
 
     composed_path = save_image(composed, out / f"{stem}_composed.jpg")
+    crop_image_paths: list[str] = []
+    if config.get("outputs", {}).get("save_individual_crops", True):
+        with latency.measure("save_individual_crops"):
+            crop_image_paths = _save_individual_crops(image, crop_metadata, out, stem)
+            for meta, crop_path in zip(crop_metadata, crop_image_paths):
+                meta["crop_image_path"] = crop_path
+
     detections_path = None
     if config.get("outputs", {}).get("save_detections_visualization", True):
         with latency.measure("detections_visualization"):
@@ -80,6 +87,7 @@ def run_pipeline(
         "detections": detections,
         "selected_crops": selected,
         "crop_metadata": crop_metadata,
+        "crop_image_paths": crop_image_paths,
         "composed_image_path": str(composed_path),
         "detections_visualization_path": str(detections_path) if detections_path else None,
         "final_prompt_path": str(prompt_path),
@@ -92,3 +100,25 @@ def run_pipeline(
         save_json(metadata, metadata_path)
     metadata["metadata_path"] = str(metadata_path)
     return metadata
+
+
+def _save_individual_crops(
+    image,
+    crop_metadata: list[dict[str, Any]],
+    out_dir: Path,
+    stem: str,
+) -> list[str]:
+    crop_dir = out_dir / f"{stem}_crops"
+    crop_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[str] = []
+    for meta in crop_metadata:
+        x1, y1, x2, y2 = meta["source_box"]
+        label = _safe_label(meta["label"])
+        path = crop_dir / f"crop_{meta['index']:02d}_{label}.jpg"
+        save_image(image.crop((x1, y1, x2, y2)), path)
+        paths.append(str(path))
+    return paths
+
+
+def _safe_label(label: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in label)[:48]

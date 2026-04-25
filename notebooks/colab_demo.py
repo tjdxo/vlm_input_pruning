@@ -1,11 +1,7 @@
-"""Thin Colab demo wrapper.
+"""Colab helper functions.
 
-Upload or clone this repository, install requirements, then run:
-
-    !python scripts/run_single_image.py \
-      --image /content/sample.jpg \
-      --question "Describe the important objects while preserving fine details." \
-      --out-dir /content/outputs
+The main Colab experience is available in `notebooks/colab_demo.ipynb`.
+This module is kept thin so notebook cells can import the same helper if needed.
 """
 
 from pathlib import Path

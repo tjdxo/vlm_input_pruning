@@ -33,6 +33,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "main_vlm": {"backend": "dummy"},
     "outputs": {
         "save_detections_visualization": True,
+        "save_individual_crops": True,
         "save_final_prompt": True,
         "save_metadata": True,
     },

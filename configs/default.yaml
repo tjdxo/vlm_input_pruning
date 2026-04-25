@@ -46,5 +46,6 @@ main_vlm:
 
 outputs:
   save_detections_visualization: true
+  save_individual_crops: true
   save_final_prompt: true
   save_metadata: true

@@ -152,6 +152,17 @@ notebooks/mmbench_20_manual_colab.ipynb
 notebooks/mmbench_20_manual_colab.py
 ```
 
+To run the actual head-20 comparison locally in Colab with Qwen loaded on the
+Colab GPU, use:
+
+```text
+notebooks/mmbench_20_qwen_local_colab.ipynb
+notebooks/mmbench_20_qwen_local_colab.py
+```
+
+This compares `Qwen + original image` against `crop-canvas preprocessing +
+Qwen` on the same 20 examples.
+
 ## Main VLM Adapter
 
 `src/main_vlm_client.py` supports:

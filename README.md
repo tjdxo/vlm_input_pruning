@@ -131,11 +131,12 @@ For a light MMBench smoke comparison between the original VLM input and this
 project's crop-canvas input, use:
 
 ```text
+notebooks/mmbench_20_eval_colab.ipynb
 notebooks/mmbench_20_eval_colab.py
 ```
 
-Copy the cells into Colab after cloning the repo. The notebook-style script
-loads 20 examples from `HuggingFaceM4/MMBench_dev`, sends each question to:
+Open the notebook in Colab after cloning the repo. It loads 20 examples from
+`HuggingFaceM4/MMBench_dev`, sends each question to:
 
 - baseline: original image + MMBench multiple-choice prompt
 - pruned: composed crop canvas + generated scene/crop prompt

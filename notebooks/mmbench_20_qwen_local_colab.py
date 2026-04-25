@@ -66,9 +66,11 @@ import sys
 
 # Qwen2.5-VL support requires a recent Transformers. qwen-vl-utils handles
 # local image inputs for the chat template.
+# Keep Pillow below 12 in Colab because mixed Pillow files can break PIL imports.
 packages = [
     "-r",
     "requirements.txt",
+    "pillow<12",
     "datasets",
     "accelerate",
     "qwen-vl-utils",
@@ -85,7 +87,16 @@ if USE_YOLO_DETECTOR:
     packages.append("ultralytics")
 
 subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q", "-U", *packages],
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        "--upgrade-strategy",
+        "only-if-needed",
+        *packages,
+    ],
     check=True,
 )
 

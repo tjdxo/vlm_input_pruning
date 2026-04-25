@@ -13,8 +13,8 @@ local add-on measurements for this experiment.
 # %% [markdown]
 # # MMBench 20-sample comparison
 #
-# Run this after cloning the repository and changing into
-# `/content/vlm_input_pruning`.
+# The first cell clones this repository into `/content/vlm_input_pruning`.
+# If the repo is private, add a Colab Secret named `GITHUB_TOKEN` first.
 #
 # The VLM must be available through an OpenAI-compatible chat-completions
 # endpoint that accepts image_url content. For a remote API, Colab GPU memory
@@ -27,10 +27,33 @@ import sys
 from pathlib import Path
 
 REPO_DIR = Path("/content/vlm_input_pruning")
+REPO_URL = "https://github.com/tjdxo/vlm_input_pruning.git"
 
 if not REPO_DIR.exists():
-    raise RuntimeError(
-        "Clone the repo first, then run this cell from /content/vlm_input_pruning."
+    token = ""
+    try:
+        from google.colab import userdata
+
+        token = userdata.get("GITHUB_TOKEN") or ""
+    except Exception:
+        token = os.environ.get("GITHUB_TOKEN", "")
+
+    clone_url = REPO_URL
+    if token:
+        clone_url = (
+            "https://x-access-token:"
+            + token
+            + "@github.com/tjdxo/vlm_input_pruning.git"
+        )
+
+    subprocess.run(
+        ["git", "clone", clone_url, str(REPO_DIR)],
+        check=True,
+    )
+else:
+    subprocess.run(
+        ["git", "-C", str(REPO_DIR), "pull"],
+        check=True,
     )
 
 os.chdir(REPO_DIR)

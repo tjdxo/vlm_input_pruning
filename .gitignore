@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Local model weights and downloaded assets
+*.pt
+*.pth
+*.onnx
+*.gguf
+models/
+vendor/
+
+# Generated outputs
+examples/outputs/
+
+# Local secrets
+.env
+*.key
